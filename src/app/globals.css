@@ -1,0 +1,273 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* "Ledger" palette — warm paper background, deep ink-navy primary,
+       amber for stock/expiry warnings, muted sage for success/paid states.
+       Chosen to read as a trustworthy back-office tool, not a generic
+       violet-gradient SaaS dashboard. */
+    --background: 40 23% 97%;
+    --foreground: 222 30% 12%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 30% 12%;
+
+    --primary: 213 55% 23%;
+    --primary-foreground: 40 23% 97%;
+
+    --secondary: 40 14% 91%;
+    --secondary-foreground: 222 30% 12%;
+
+    --muted: 40 14% 91%;
+    --muted-foreground: 222 12% 40%;
+
+    --accent: 213 40% 94%;
+    --accent-foreground: 213 55% 23%;
+
+    --destructive: 4 72% 45%;
+    --destructive-foreground: 40 23% 97%;
+
+    --success: 148 35% 32%;
+    --success-foreground: 40 23% 97%;
+
+    --warning: 32 85% 45%;
+    --warning-foreground: 40 23% 97%;
+
+    --border: 40 14% 87%;
+    --input: 40 14% 87%;
+    --ring: 213 55% 23%;
+
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 222 32% 9%;
+    --foreground: 40 20% 94%;
+
+    --card: 222 28% 12%;
+    --card-foreground: 40 20% 94%;
+
+    --primary: 213 55% 62%;
+    --primary-foreground: 222 32% 9%;
+
+    --secondary: 222 20% 18%;
+    --secondary-foreground: 40 20% 94%;
+
+    --muted: 222 20% 18%;
+    --muted-foreground: 220 10% 65%;
+
+    --accent: 213 30% 20%;
+    --accent-foreground: 213 60% 78%;
+
+    --destructive: 4 65% 55%;
+    --destructive-foreground: 40 20% 94%;
+
+    --success: 148 30% 45%;
+    --success-foreground: 40 20% 94%;
+
+    --warning: 32 75% 55%;
+    --warning-foreground: 222 32% 9%;
+
+    --border: 222 20% 20%;
+    --input: 222 20% 20%;
+    --ring: 213 55% 62%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "cv11", "ss01";
+  }
+}
+
+/* Tabular numbers for anything money/qty related — keeps ledger-style tables aligned. */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 40 23% 97%;
+    --foreground: 222 30% 12%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 30% 12%;
+
+    --primary: 213 55% 23%;
+    --primary-foreground: 40 23% 97%;
+
+    --secondary: 40 14% 91%;
+    --secondary-foreground: 222 30% 12%;
+
+    --muted: 40 14% 91%;
+    --muted-foreground: 222 12% 40%;
+
+    --accent: 213 40% 94%;
+    --accent-foreground: 213 55% 23%;
+
+    --destructive: 4 72% 45%;
+    --destructive-foreground: 40 23% 97%;
+
+    --success: 148 35% 32%;
+    --success-foreground: 40 23% 97%;
+
+    --warning: 32 85% 45%;
+    --warning-foreground: 40 23% 97%;
+
+    --border: 40 14% 87%;
+    --input: 40 14% 87%;
+    --ring: 213 55% 23%;
+
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 222 32% 9%;
+    --foreground: 40 20% 94%;
+
+    --card: 222 28% 12%;
+    --card-foreground: 40 20% 94%;
+
+    --primary: 213 55% 62%;
+    --primary-foreground: 222 32% 9%;
+
+    --secondary: 222 20% 18%;
+    --secondary-foreground: 40 20% 94%;
+
+    --muted: 222 20% 18%;
+    --muted-foreground: 220 10% 65%;
+
+    --accent: 213 30% 20%;
+    --accent-foreground: 213 60% 78%;
+
+    --destructive: 4 65% 55%;
+    --destructive-foreground: 40 20% 94%;
+
+    --success: 148 30% 45%;
+    --success-foreground: 40 20% 94%;
+
+    --warning: 32 75% 55%;
+    --warning-foreground: 222 32% 9%;
+
+    --border: 222 20% 20%;
+    --input: 222 20% 20%;
+    --ring: 213 55% 62%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+
+    font-feature-settings:
+      "cv11",
+      "ss01";
+  }
+}
+
+.tabular-nums {
+  font-variant-numeric:
+    tabular-nums;
+}
+
+/* ================================
+   PRINTING
+================================ */
+
+.print-only {
+  display: none;
+}
+
+@page {
+  size: A4;
+
+  margin:
+    10mm;
+}
+
+@media print {
+  html,
+  body {
+    background: white !important;
+
+    color: black !important;
+
+    font-size: 11px !important;
+  }
+
+  aside,
+  header,
+  [data-no-print],
+  .print-hidden {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  main {
+    display: block !important;
+
+    overflow: visible !important;
+
+    padding: 0 !important;
+
+    margin: 0 !important;
+  }
+
+  .print-page {
+    width: 100% !important;
+
+    max-width: none !important;
+
+    margin: 0 !important;
+
+    padding: 0 !important;
+
+    background: white !important;
+
+    color: black !important;
+  }
+
+  table {
+    width: 100% !important;
+
+    border-collapse:
+      collapse !important;
+  }
+
+  thead {
+    display:
+      table-header-group;
+  }
+
+  tr {
+    break-inside: avoid;
+  }
+
+  th,
+  td {
+    color: black !important;
+
+    border-color: #999 !important;
+  }
+
+  .print-header {
+    break-inside: avoid;
+  }
+}

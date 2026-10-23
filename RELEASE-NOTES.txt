@@ -1,0 +1,40 @@
+IMS SaaS Operations Hardening Release - 2026-09-26
+
+Built from the user's uploaded ims-web-app.zip.
+
+Major additions:
+- Session-aware branch switching
+- Multi-branch user assignment UI and API
+- Business/branch branding retained with branch logo precedence on print
+- Financial-year document sequencing for sales and purchases/GRN
+- Supplier state-code support and better GST state classification
+- Customer receipt posting
+- Supplier payment and supplier ledger
+- Sales returns and purchase returns
+- Stock adjustment workflow
+- Inter-branch stock transfer workflow
+- Stock movement ledger
+- FEFO/expired-batch sale protection
+- Audit-log API/UI
+- Operations UI
+- CSV export on reports
+- Admin seed enhancements for opening stock/supplier ledger
+
+Database schema changed. Back up the DB first.
+Development DB quick sync:
+  npx prisma generate
+  npx prisma db push
+
+Preferred migration workflow:
+  npx prisma migrate dev --name operations_hardening
+  npx prisma generate
+
+Then:
+  npm install
+  npm run typecheck
+  npm run dev
+
+Optional test data:
+  npm run db:admin-test-seed
+
+See UPGRADE-GUIDE.md and CHANGELOG-2026-09-26.md.

@@ -1,0 +1,898 @@
+// IMS SaaS — Prisma schema (SQL Server)
+// Multi-tenant foundation: Tenant -> Business -> Branch.
+// Business owns master data; Branch owns stock and transactions.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlserver"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  id        Int      @id @default(autoincrement())
+  name      String   @db.NVarChar(150)
+  slug      String   @unique @db.NVarChar(80)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.DateTime2
+  updatedAt DateTime @updatedAt @db.DateTime2
+
+  businesses Business[]
+  users      User[]
+  auditLogs     AuditLog[]
+  subscription         TenantSubscription?
+  subscriptionPayments  SubscriptionPayment[]
+  subscriptionHistory   SubscriptionHistory[]
+
+  @@map("tenants")
+}
+
+model SaasPlan {
+  id            Int      @id @default(autoincrement())
+  code          String   @unique @db.NVarChar(30)
+  name          String   @db.NVarChar(100)
+  description   String?  @db.NVarChar(500)
+
+  monthlyPrice  Decimal  @default(0) @db.Decimal(18, 2)
+  yearlyPrice   Decimal  @default(0) @db.Decimal(18, 2)
+  currencyCode  String   @default("INR") @db.NVarChar(3)
+
+  maxBranches   Int      @default(1)
+  maxUsers      Int      @default(3)
+  trialDays     Int      @default(14)
+
+  featuresJson  String?  @db.NVarChar(Max)
+
+  razorpayMonthlyPlanId String? @db.NVarChar(120)
+  razorpayYearlyPlanId  String? @db.NVarChar(120)
+
+  isActive      Boolean  @default(true)
+  sortOrder     Int      @default(0)
+
+  createdAt     DateTime @default(now()) @db.DateTime2
+  updatedAt     DateTime @updatedAt @db.DateTime2
+
+  subscriptions TenantSubscription[]
+
+  @@map("saas_plans")
+}
+
+model TenantSubscription {
+  id                     Int      @id @default(autoincrement())
+
+  tenantId               Int      @unique
+  tenant                 Tenant   @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  planId                 Int
+  plan                   SaasPlan @relation(fields: [planId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  status                 String   @default("TRIAL") @db.NVarChar(30)
+  billingCycle           String   @default("MONTHLY") @db.NVarChar(20)
+
+  trialStartedAt         DateTime? @db.DateTime2
+  trialEndsAt            DateTime? @db.DateTime2
+
+  currentPeriodStart     DateTime? @db.DateTime2
+  currentPeriodEnd       DateTime? @db.DateTime2
+  nextBillingAt          DateTime? @db.DateTime2
+  graceEndsAt            DateTime? @db.DateTime2
+
+  externalCustomerId     String?  @db.NVarChar(120)
+  externalSubscriptionId String?  @db.NVarChar(120)
+
+  notes                  String?  @db.NVarChar(500)
+
+  createdAt              DateTime @default(now()) @db.DateTime2
+  updatedAt              DateTime @updatedAt @db.DateTime2
+
+  payments               SubscriptionPayment[]
+  history                SubscriptionHistory[]
+
+  @@index([planId])
+  @@index([status])
+  @@index([trialEndsAt])
+  @@index([currentPeriodEnd])
+  @@map("tenant_subscriptions")
+}
+
+model SubscriptionPayment {
+  id             BigInt   @id @default(autoincrement())
+
+  tenantId       Int
+  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  subscriptionId Int
+  subscription   TenantSubscription @relation(fields: [subscriptionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  paymentDate    DateTime @default(now()) @db.DateTime2
+  amount         Decimal  @db.Decimal(18, 2)
+  currencyCode   String   @default("INR") @db.NVarChar(3)
+
+  mode           String   @db.NVarChar(30)
+  status         String   @default("PAID") @db.NVarChar(20)
+
+  provider       String?  @db.NVarChar(50)
+  externalPaymentId String? @db.NVarChar(150)
+  reference      String?  @db.NVarChar(150)
+
+  billingCycle   String   @db.NVarChar(20)
+  periodStart    DateTime @db.DateTime2
+  periodEnd      DateTime @db.DateTime2
+
+  notes          String?  @db.NVarChar(500)
+
+  createdById    Int?
+  createdBy      User?    @relation("SubscriptionPaymentCreatedBy", fields: [createdById], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  createdAt      DateTime @default(now()) @db.DateTime2
+
+  @@index([tenantId, paymentDate])
+  @@index([subscriptionId, paymentDate])
+  @@index([status])
+  @@index([externalPaymentId])
+  @@map("subscription_payments")
+}
+
+model SubscriptionHistory {
+  id             BigInt   @id @default(autoincrement())
+
+  tenantId       Int
+  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  subscriptionId Int
+  subscription   TenantSubscription @relation(fields: [subscriptionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  action         String   @db.NVarChar(50)
+
+  fromStatus     String?  @db.NVarChar(30)
+  toStatus       String?  @db.NVarChar(30)
+
+  fromPlanCode   String?  @db.NVarChar(30)
+  toPlanCode     String?  @db.NVarChar(30)
+
+  note           String?  @db.NVarChar(500)
+  metadata       String?  @db.NVarChar(Max)
+
+  createdById    Int?
+  createdBy      User?    @relation("SubscriptionHistoryCreatedBy", fields: [createdById], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  createdAt      DateTime @default(now()) @db.DateTime2
+
+  @@index([tenantId, createdAt])
+  @@index([subscriptionId, createdAt])
+  @@index([action])
+  @@map("subscription_history")
+}
+
+model RazorpayWebhookEvent {
+  id                     BigInt   @id @default(autoincrement())
+  eventHash              String   @unique @db.NVarChar(64)
+  eventType              String   @db.NVarChar(80)
+  externalSubscriptionId String?  @db.NVarChar(150)
+  externalPaymentId      String?  @db.NVarChar(150)
+  payloadJson            String   @db.NVarChar(Max)
+  processedAt            DateTime @default(now()) @db.DateTime2
+  createdAt              DateTime @default(now()) @db.DateTime2
+
+  @@index([eventType, createdAt])
+  @@index([externalSubscriptionId])
+  @@index([externalPaymentId])
+  @@map("razorpay_webhook_events")
+}
+
+model Business {
+  id                      Int      @id @default(autoincrement())
+  tenantId                Int
+  tenant                  Tenant   @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  code                    String   @db.NVarChar(30)
+  legalName               String   @db.NVarChar(200)
+  tradeName               String?  @db.NVarChar(200)
+  businessType            String?  @db.NVarChar(80)
+  pan                     String?  @db.NVarChar(10)
+  email                   String?  @db.NVarChar(120)
+  phone                   String?  @db.NVarChar(30)
+  website                 String?  @db.NVarChar(200)
+  logoUrl                 String?  @db.NVarChar(500)
+  currencyCode            String   @default("INR") @db.NVarChar(3)
+  financialYearStartMonth Int      @default(4)
+  isActive                Boolean  @default(true)
+  createdAt               DateTime @default(now()) @db.DateTime2
+  updatedAt               DateTime @updatedAt @db.DateTime2
+
+  branches  Branch[]
+  products  Product[]
+  suppliers Supplier[]
+  customers Customer[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@map("businesses")
+}
+
+model Branch {
+  id                 Int      @id @default(autoincrement())
+  businessId         Int
+  business           Business @relation(fields: [businessId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  code               String   @db.NVarChar(30)
+  name               String   @db.NVarChar(150)
+  logoUrl            String?  @db.NVarChar(500)
+  addressLine1       String?  @db.NVarChar(200)
+  addressLine2       String?  @db.NVarChar(200)
+  city               String?  @db.NVarChar(100)
+  state              String?  @db.NVarChar(100)
+  stateCode          String?  @db.NVarChar(2)
+  pincode            String?  @db.NVarChar(10)
+  phone              String?  @db.NVarChar(30)
+  email              String?  @db.NVarChar(120)
+  gstin              String?  @db.NVarChar(15)
+  invoicePrefix      String   @default("INV") @db.NVarChar(12)
+  purchasePrefix     String   @default("PUR") @db.NVarChar(12)
+  creditNotePrefix   String   @default("CN") @db.NVarChar(12)
+  lowStockGlobal     Int      @default(10)
+  allowNegativeStock Boolean  @default(false)
+  pricesIncludeTax   Boolean  @default(true)
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now()) @db.DateTime2
+  updatedAt          DateTime @updatedAt @db.DateTime2
+
+  defaultUsers     User[]                @relation("UserDefaultBranch")
+  userAccess       UserBranchAccess[]
+  batches          ProductBatch[]
+  purchases        Purchase[]
+  sales            Sale[]
+  purchasePayments PurchasePayment[]
+  salePayments     SalePayment[]
+  ledgerEntries    CustomerLedgerEntry[]
+  auditLogs        AuditLog[]
+  customerReceipts CustomerReceipt[]
+  supplierPayments SupplierPayment[]
+  stockLedger      StockLedgerEntry[]
+  stockAdjustments StockAdjustment[]
+  transfersOut     StockTransfer[]       @relation("TransferFromBranch")
+  transfersIn      StockTransfer[]       @relation("TransferToBranch")
+  saleReturns      SaleReturn[]
+  purchaseReturns  PurchaseReturn[]
+  supplierLedgerEntries SupplierLedgerEntry[]
+  documentSequences DocumentSequence[]
+
+  @@unique([businessId, code])
+  @@index([businessId])
+  @@index([gstin])
+  @@map("branches")
+}
+
+model User {
+  id              Int       @id @default(autoincrement())
+  tenantId        Int
+  tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  defaultBranchId Int?
+  defaultBranch   Branch?   @relation("UserDefaultBranch", fields: [defaultBranchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  username        String    @unique @db.NVarChar(50)
+  fullName        String    @db.NVarChar(100)
+  passwordHash    String    @db.NVarChar(256)
+  role            String    @default("STAFF") @db.NVarChar(20)
+  platformRole    String?   @db.NVarChar(30)
+  isActive        Boolean   @default(true)
+  lastLoginAt     DateTime? @db.DateTime2
+  createdAt       DateTime  @default(now()) @db.DateTime2
+  updatedAt       DateTime  @updatedAt @db.DateTime2
+
+  branchAccess     UserBranchAccess[]
+  createdPurchases Purchase[]         @relation("PurchaseCreatedBy")
+  updatedPurchases Purchase[]         @relation("PurchaseUpdatedBy")
+  createdSales     Sale[]             @relation("SaleCreatedBy")
+  updatedSales     Sale[]             @relation("SaleUpdatedBy")
+  cancelledSales   Sale[]             @relation("SaleCancelledBy")
+  auditLogs        AuditLog[]
+  customerReceipts CustomerReceipt[]  @relation("CustomerReceiptCreatedBy")
+  supplierPayments SupplierPayment[]  @relation("SupplierPaymentCreatedBy")
+  stockAdjustments StockAdjustment[]  @relation("StockAdjustmentCreatedBy")
+  stockTransfers            StockTransfer[] @relation("StockTransferCreatedBy")
+  dispatchedStockTransfers  StockTransfer[] @relation("StockTransferDispatchedBy")
+  receivedStockTransfers    StockTransfer[] @relation("StockTransferReceivedBy")
+  saleReturns      SaleReturn[]       @relation("SaleReturnCreatedBy")
+  purchaseReturns  PurchaseReturn[]   @relation("PurchaseReturnCreatedBy")
+  subscriptionPaymentsCreated SubscriptionPayment[] @relation("SubscriptionPaymentCreatedBy")
+  subscriptionHistoryCreated  SubscriptionHistory[] @relation("SubscriptionHistoryCreatedBy")
+
+  @@index([tenantId])
+  @@index([defaultBranchId])
+  @@map("users")
+}
+
+model UserBranchAccess {
+  userId    Int
+  branchId  Int
+  role      String?  @db.NVarChar(20)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.DateTime2
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([userId, branchId])
+  @@index([branchId])
+  @@map("user_branch_access")
+}
+
+model AuditLog {
+  id         BigInt   @id @default(autoincrement())
+  tenantId   Int
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  branchId   Int?
+  branch     Branch?  @relation(fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  userId     Int?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  action     String   @db.NVarChar(50)
+  entityType String   @db.NVarChar(50)
+  entityId   String?  @db.NVarChar(50)
+  metadata   String?  @db.NVarChar(Max)
+  ipAddress  String?  @db.NVarChar(64)
+  createdAt  DateTime @default(now()) @db.DateTime2
+
+  @@index([tenantId, createdAt])
+  @@index([branchId, createdAt])
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+}
+
+model Product {
+  id                Int      @id @default(autoincrement())
+  businessId        Int
+  business          Business @relation(fields: [businessId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  name              String   @db.NVarChar(200)
+  sku               String?  @db.NVarChar(50)
+  brand             String?  @db.NVarChar(200)
+  variant           String?  @db.NVarChar(200)
+  category          String?  @db.NVarChar(100)
+  unit              String   @default("pcs") @db.NVarChar(20)
+  hsnCode           String?  @db.NVarChar(20)
+  defaultTaxPercent Decimal  @default(0) @db.Decimal(5, 2)
+  reorderLevel      Int      @default(0)
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now()) @db.DateTime2
+  updatedAt         DateTime @updatedAt @db.DateTime2
+
+  batches       ProductBatch[]
+  purchaseItems PurchaseItem[]
+
+  @@index([businessId, name])
+  @@index([businessId, sku])
+  @@map("products")
+}
+
+model ProductBatch {
+  id           Int       @id @default(autoincrement())
+  branchId     Int
+  branch       Branch    @relation(fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  productId    Int
+  product      Product   @relation(fields: [productId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  batchNo      String    @db.NVarChar(50)
+  expiryDate   DateTime? @db.Date
+  mrp          Decimal   @db.Decimal(18, 2)
+  costPrice    Decimal   @db.Decimal(18, 2)
+  sellPrice    Decimal   @db.Decimal(18, 2)
+  openingQty   Int       @default(0)
+  currentQty   Int       @default(0)
+  rackLocation String?   @db.NVarChar(50)
+  createdAt    DateTime  @default(now()) @db.DateTime2
+
+  purchaseItems       PurchaseItem[]
+  saleItems           SaleItem[]
+  stockLedger         StockLedgerEntry[]
+  adjustmentItems     StockAdjustmentItem[]
+  sourceTransferItems      StockTransferItem[] @relation("TransferSourceBatch")
+  destinationTransferItems StockTransferItem[] @relation("TransferDestinationBatch")
+  saleReturnItems     SaleReturnItem[]
+  purchaseReturnItems PurchaseReturnItem[]
+
+  @@index([branchId, productId])
+  @@index([branchId, expiryDate])
+  @@map("product_batches")
+}
+
+model Supplier {
+  id            Int      @id @default(autoincrement())
+  businessId    Int
+  business      Business @relation(fields: [businessId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  name          String   @db.NVarChar(200)
+  contactPerson String?  @db.NVarChar(150)
+  mobile        String?  @db.NVarChar(20)
+  phone         String?  @db.NVarChar(20)
+  taxId         String?  @db.NVarChar(20)
+  addressLine1  String?  @db.NVarChar(200)
+  addressLine2  String?  @db.NVarChar(200)
+  city          String?  @db.NVarChar(100)
+  state         String?  @db.NVarChar(100)
+  stateCode     String?  @db.NVarChar(2)
+  pincode       String?  @db.NVarChar(10)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now()) @db.DateTime2
+
+  purchases       Purchase[]
+  payments        SupplierPayment[]
+  ledger          SupplierLedgerEntry[]
+  purchaseReturns PurchaseReturn[]
+
+  @@index([businessId, name])
+  @@map("suppliers")
+}
+
+model Customer {
+  id         Int      @id @default(autoincrement())
+  businessId Int
+  business   Business @relation(fields: [businessId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  name       String   @db.NVarChar(200)
+  mobile     String?  @db.NVarChar(20)
+  address    String?  @db.NVarChar(300)
+  referredBy String?  @db.NVarChar(200)
+  taxId      String?  @db.NVarChar(20)
+  state      String?  @db.NVarChar(100)
+  stateCode  String?  @db.NVarChar(2)
+  isActive   Boolean  @default(true)
+  dueAmount  Decimal  @default(0) @db.Decimal(18, 2)
+  createdAt  DateTime @default(now()) @db.DateTime2
+
+  sales       Sale[]
+  ledger      CustomerLedgerEntry[]
+  receipts    CustomerReceipt[]
+  saleReturns SaleReturn[]
+
+  @@index([businessId, name])
+  @@index([businessId, mobile])
+  @@map("customers")
+}
+
+model CustomerLedgerEntry {
+  id         Int      @id @default(autoincrement())
+  branchId   Int
+  branch     Branch   @relation(fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  customerId Int
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  saleId     BigInt?
+  sale       Sale?    @relation(fields: [saleId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  txnDate    DateTime @default(now()) @db.DateTime2
+  debit      Decimal  @default(0) @db.Decimal(18, 2)
+  credit     Decimal  @default(0) @db.Decimal(18, 2)
+  note       String?  @db.NVarChar(200)
+
+  @@index([branchId, customerId, txnDate])
+  @@map("customer_ledger_entries")
+}
+
+model Purchase {
+  id                     BigInt    @id @default(autoincrement())
+  branchId               Int
+  branch                 Branch    @relation(fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  supplierId             Int
+  supplier               Supplier  @relation(fields: [supplierId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  invoiceNo              String    @db.NVarChar(50)
+  grnNo                  String?   @db.NVarChar(40)
+  invoiceDate            DateTime  @db.Date
+  grossAmount            Decimal   @db.Decimal(18, 2)
+  totalDiscount          Decimal   @db.Decimal(18, 2)
+  taxableAmount          Decimal   @db.Decimal(18, 2)
+  totalTax               Decimal   @db.Decimal(18, 2)
+  totalCgst              Decimal   @default(0) @db.Decimal(18, 2)
+  totalSgst              Decimal   @default(0) @db.Decimal(18, 2)
+  totalIgst              Decimal   @default(0) @db.Decimal(18, 2)
+  placeOfSupplyStateCode String?   @db.NVarChar(2)
+  isInterstate           Boolean   @default(false)
+  netAmount              Decimal   @db.Decimal(18, 2)
+  paymentMode            String    @db.NVarChar(30)
+  paidAmount             Decimal   @default(0) @db.Decimal(18, 2)
+  dueAmount              Decimal   @default(0) @db.Decimal(18, 2)
+  isCancelled            Boolean   @default(false)
+  cancelReason           String?   @db.NVarChar(250)
+  createdById            Int
+  createdBy              User      @relation("PurchaseCreatedBy", fields: [createdById], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  createdAt              DateTime  @default(now()) @db.DateTime2
+  updatedById            Int?
+  updatedBy              User?     @relation("PurchaseUpdatedBy", fields: [updatedById], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  updatedAt              DateTime? @db.DateTime2
+
+  items    PurchaseItem[]
+  payments PurchasePayment[]
+  returns  PurchaseReturn[]
+
+  @@index([branchId, invoiceDate])
+  @@index([supplierId])
+  @@map("purchases")
+}
+
+model PurchaseItem {
+  id              BigInt       @id @default(autoincrement())
+  purchaseId      BigInt
+  purchase        Purchase     @relation(fields: [purchaseId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  productId       Int
+  product         Product      @relation(fields: [productId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  batchId         Int
+  batch           ProductBatch @relation(fields: [batchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  batchNo         String       @db.NVarChar(50)
+  expiryDate      DateTime?    @db.Date
+  qty             Int
+  freeQty         Int          @default(0)
+  mrp             Decimal      @db.Decimal(18, 2)
+  costPrice       Decimal      @db.Decimal(18, 2)
+  sellPrice       Decimal      @db.Decimal(18, 2)
+  discountPercent Decimal      @default(0) @db.Decimal(5, 2)
+  discountAmount  Decimal      @default(0) @db.Decimal(18, 2)
+  taxPercent      Decimal      @default(0) @db.Decimal(5, 2)
+  taxAmount       Decimal      @default(0) @db.Decimal(18, 2)
+  lineTotal       Decimal      @db.Decimal(18, 2)
+  returnItems     PurchaseReturnItem[]
+
+  @@index([purchaseId])
+  @@index([productId])
+  @@map("purchase_items")
+}
+
+model Sale {
+  id                     BigInt    @id @default(autoincrement())
+  branchId               Int
+  branch                 Branch    @relation(fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  billNo                 String    @db.NVarChar(40)
+  billDateTime           DateTime  @default(now()) @db.DateTime2
+  customerId             Int?
+  customer               Customer? @relation(fields: [customerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  grossAmount            Decimal   @db.Decimal(18, 2)
+  totalDiscount          Decimal   @db.Decimal(18, 2)
+  taxableAmount          Decimal   @db.Decimal(18, 2)
+  totalCgst              Decimal   @default(0) @db.Decimal(18, 2)
+  totalSgst              Decimal   @default(0) @db.Decimal(18, 2)
+  totalIgst              Decimal   @default(0) @db.Decimal(18, 2)
+  placeOfSupplyStateCode String?   @db.NVarChar(2)
+  isInterstate           Boolean   @default(false)
+  financialYear          String?   @db.NVarChar(9)
+  netAmount              Decimal   @db.Decimal(18, 2)
+  paymentMode            String    @db.NVarChar(30)
+  receivedAmount         Decimal   @default(0) @db.Decimal(18, 2)
+  dueAmount              Decimal   @default(0) @db.Decimal(18, 2)
+  isCancelled            Boolean   @default(false)
+  cancelledAt            DateTime? @db.DateTime2
+  cancelledById          Int?
+  cancelledBy            User?     @relation("SaleCancelledBy", fields: [cancelledById], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  cancelReason           String?   @db.NVarChar(200)
+  createdById            Int
+  createdBy              User      @relation("SaleCreatedBy", fields: [createdById], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  updatedById            Int?
+  updatedBy              User?     @relation("SaleUpdatedBy", fields: [updatedById], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  updatedAt              DateTime? @db.DateTime2
+
+  items      SaleItem[]
+  payments   SalePayment[]
+  ledgerRefs CustomerLedgerEntry[]
+  returns    SaleReturn[]
+
+  @@unique([branchId, billNo])
+  @@index([branchId, billDateTime])
+  @@index([customerId])
+  @@map("sales")
+}
+
+model SaleItem {
+  id              BigInt       @id @default(autoincrement())
+  saleId          BigInt
+  sale            Sale         @relation(fields: [saleId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  batchId         Int
+  batch           ProductBatch @relation(fields: [batchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  qty             Int
+  rate            Decimal      @db.Decimal(18, 2)
+  discountPercent Decimal      @default(0) @db.Decimal(5, 2)
+  discountAmount  Decimal      @default(0) @db.Decimal(18, 2)
+  taxPercent      Decimal      @default(0) @db.Decimal(5, 2)
+  taxAmount       Decimal      @default(0) @db.Decimal(18, 2)
+  costPriceAtSale Decimal?     @db.Decimal(18, 2)
+  costAmount      Decimal?     @db.Decimal(18, 2)
+  lineTotal       Decimal      @db.Decimal(18, 2)
+  returnItems     SaleReturnItem[]
+
+  @@index([saleId])
+  @@index([batchId])
+  @@map("sale_items")
+}
+
+model PurchasePayment {
+  id         BigInt   @id @default(autoincrement())
+  purchaseId BigInt
+  purchase   Purchase @relation(fields: [purchaseId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  branchId   Int
+  branch     Branch   @relation(fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  mode       String   @db.NVarChar(30)
+  amount     Decimal  @db.Decimal(18, 2)
+  reference  String?  @db.NVarChar(100)
+  createdAt  DateTime @default(now()) @db.DateTime2
+
+  @@index([purchaseId])
+  @@index([branchId, createdAt])
+  @@map("purchase_payments")
+}
+
+model SalePayment {
+  id        BigInt   @id @default(autoincrement())
+  saleId    BigInt
+  sale      Sale     @relation(fields: [saleId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  branchId  Int
+  branch    Branch   @relation(fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  mode      String   @db.NVarChar(30)
+  amount    Decimal  @db.Decimal(18, 2)
+  reference String?  @db.NVarChar(100)
+  createdAt DateTime @default(now()) @db.DateTime2
+
+  @@index([saleId])
+  @@index([branchId, createdAt])
+  @@map("sale_payments")
+}
+
+model CustomerReceipt {
+  id         BigInt   @id @default(autoincrement())
+  branchId   Int
+  branch     Branch   @relation(fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  customerId Int
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  receiptNo  String   @db.NVarChar(40)
+  receiptDate DateTime @default(now()) @db.DateTime2
+  mode       String   @db.NVarChar(30)
+  amount     Decimal  @db.Decimal(18,2)
+  reference  String?  @db.NVarChar(100)
+  note       String?  @db.NVarChar(250)
+  createdById Int
+  createdBy  User     @relation("CustomerReceiptCreatedBy", fields: [createdById], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  createdAt  DateTime @default(now()) @db.DateTime2
+
+  @@unique([branchId, receiptNo])
+  @@index([customerId, receiptDate])
+  @@map("customer_receipts")
+}
+
+model SupplierPayment {
+  id         BigInt   @id @default(autoincrement())
+  branchId   Int
+  branch     Branch   @relation(fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  supplierId Int
+  supplier   Supplier @relation(fields: [supplierId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  paymentNo  String   @db.NVarChar(40)
+  paymentDate DateTime @default(now()) @db.DateTime2
+  mode       String   @db.NVarChar(30)
+  amount     Decimal  @db.Decimal(18,2)
+  reference  String?  @db.NVarChar(100)
+  note       String?  @db.NVarChar(250)
+  createdById Int
+  createdBy  User     @relation("SupplierPaymentCreatedBy", fields: [createdById], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  createdAt  DateTime @default(now()) @db.DateTime2
+
+  @@unique([branchId, paymentNo])
+  @@index([supplierId, paymentDate])
+  @@map("supplier_payments")
+}
+
+model SupplierLedgerEntry {
+  id         BigInt   @id @default(autoincrement())
+  branchId   Int
+  branch     Branch   @relation(fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  supplierId Int
+  supplier   Supplier @relation(fields: [supplierId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  txnDate    DateTime @default(now()) @db.DateTime2
+  entryType  String   @db.NVarChar(30)
+  referenceType String? @db.NVarChar(30)
+  referenceId String? @db.NVarChar(50)
+  debit      Decimal  @default(0) @db.Decimal(18,2)
+  credit     Decimal  @default(0) @db.Decimal(18,2)
+  note       String?  @db.NVarChar(250)
+
+  @@index([branchId, supplierId, txnDate])
+  @@map("supplier_ledger_entries")
+}
+
+model StockLedgerEntry {
+  id         BigInt   @id @default(autoincrement())
+  branchId   Int
+  branch     Branch   @relation(fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  batchId    Int
+  batch      ProductBatch @relation(fields: [batchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  txnDate    DateTime @default(now()) @db.DateTime2
+  movementType String @db.NVarChar(30)
+  referenceType String? @db.NVarChar(30)
+  referenceId String? @db.NVarChar(50)
+  qtyChange  Int
+  balanceAfter Int
+  note       String? @db.NVarChar(250)
+  createdAt  DateTime @default(now()) @db.DateTime2
+
+  @@index([branchId, txnDate])
+  @@index([batchId, txnDate])
+  @@map("stock_ledger_entries")
+}
+
+model StockAdjustment {
+  id          BigInt   @id @default(autoincrement())
+  branchId    Int
+  branch      Branch   @relation(fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  adjustmentNo String  @db.NVarChar(40)
+  adjustmentDate DateTime @default(now()) @db.DateTime2
+  reason      String   @db.NVarChar(50)
+  note        String?  @db.NVarChar(250)
+  createdById Int
+  createdBy   User     @relation("StockAdjustmentCreatedBy", fields: [createdById], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  createdAt   DateTime @default(now()) @db.DateTime2
+  items       StockAdjustmentItem[]
+
+  @@unique([branchId, adjustmentNo])
+  @@index([branchId, adjustmentDate])
+  @@map("stock_adjustments")
+}
+
+model StockAdjustmentItem {
+  id           BigInt @id @default(autoincrement())
+  adjustmentId BigInt
+  adjustment   StockAdjustment @relation(fields: [adjustmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  batchId      Int
+  batch        ProductBatch @relation(fields: [batchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  qtyChange    Int
+  previousQty  Int
+  newQty       Int
+
+  @@index([adjustmentId])
+  @@index([batchId])
+  @@map("stock_adjustment_items")
+}
+
+model StockTransfer {
+  id           BigInt   @id @default(autoincrement())
+  fromBranchId Int
+  fromBranch   Branch   @relation("TransferFromBranch", fields: [fromBranchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  toBranchId   Int
+  toBranch     Branch   @relation("TransferToBranch", fields: [toBranchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  transferNo   String   @db.NVarChar(40)
+  transferDate DateTime @default(now()) @db.DateTime2
+  status       String   @default("DRAFT") @db.NVarChar(20)
+  note         String?  @db.NVarChar(250)
+
+  createdById Int
+  createdBy   User @relation("StockTransferCreatedBy", fields: [createdById], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  dispatchedAt   DateTime? @db.DateTime2
+  dispatchedById Int?
+  dispatchedBy   User?     @relation("StockTransferDispatchedBy", fields: [dispatchedById], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  inTransitAt DateTime? @db.DateTime2
+
+  receivedAt   DateTime? @db.DateTime2
+  receivedById Int?
+  receivedBy   User?     @relation("StockTransferReceivedBy", fields: [receivedById], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  receiveNote  String?   @db.NVarChar(250)
+
+  createdAt DateTime @default(now()) @db.DateTime2
+  updatedAt DateTime @updatedAt @db.DateTime2
+
+  items StockTransferItem[]
+
+  @@unique([fromBranchId, transferNo])
+  @@index([fromBranchId, transferDate])
+  @@index([toBranchId, transferDate])
+  @@index([status, transferDate])
+  @@map("stock_transfers")
+}
+
+model StockTransferItem {
+  id         BigInt       @id @default(autoincrement())
+  transferId BigInt
+  transfer   StockTransfer @relation(fields: [transferId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  sourceBatchId Int
+  sourceBatch   ProductBatch @relation("TransferSourceBatch", fields: [sourceBatchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  qty         Int
+  receivedQty Int @default(0)
+
+  destinationBatchId Int?
+  destinationBatch   ProductBatch? @relation("TransferDestinationBatch", fields: [destinationBatchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([transferId])
+  @@index([sourceBatchId])
+  @@map("stock_transfer_items")
+}
+
+model SaleReturn {
+  id          BigInt @id @default(autoincrement())
+  branchId    Int
+  branch      Branch @relation(fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  saleId      BigInt
+  sale        Sale @relation(fields: [saleId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  customerId  Int?
+  customer    Customer? @relation(fields: [customerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  returnNo    String @db.NVarChar(40)
+  returnDate  DateTime @default(now()) @db.DateTime2
+  reason      String @db.NVarChar(250)
+  taxableAmount Decimal @db.Decimal(18,2)
+  taxAmount   Decimal @db.Decimal(18,2)
+  netAmount   Decimal @db.Decimal(18,2)
+  creditApplied Decimal @default(0) @db.Decimal(18,2)
+  refundAmount Decimal @default(0) @db.Decimal(18,2)
+  refundMode  String? @db.NVarChar(30)
+  reference   String? @db.NVarChar(100)
+  createdById Int
+  createdBy   User @relation("SaleReturnCreatedBy", fields: [createdById], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  createdAt   DateTime @default(now()) @db.DateTime2
+  items       SaleReturnItem[]
+
+  @@unique([branchId, returnNo])
+  @@index([saleId])
+  @@map("sale_returns")
+}
+
+model SaleReturnItem {
+  id           BigInt @id @default(autoincrement())
+  saleReturnId BigInt
+  saleReturn   SaleReturn @relation(fields: [saleReturnId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  saleItemId   BigInt
+  saleItem     SaleItem @relation(fields: [saleItemId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  batchId      Int
+  batch        ProductBatch @relation(fields: [batchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  qty          Int
+  taxableAmount Decimal @db.Decimal(18,2)
+  taxAmount    Decimal @db.Decimal(18,2)
+  lineTotal    Decimal @db.Decimal(18,2)
+
+  @@index([saleReturnId])
+  @@index([saleItemId])
+  @@map("sale_return_items")
+}
+
+model PurchaseReturn {
+  id          BigInt @id @default(autoincrement())
+  branchId    Int
+  branch      Branch @relation(fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  purchaseId  BigInt
+  purchase    Purchase @relation(fields: [purchaseId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  supplierId  Int
+  supplier    Supplier @relation(fields: [supplierId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  returnNo    String @db.NVarChar(40)
+  returnDate  DateTime @default(now()) @db.DateTime2
+  reason      String @db.NVarChar(250)
+  taxableAmount Decimal @db.Decimal(18,2)
+  taxAmount   Decimal @db.Decimal(18,2)
+  netAmount   Decimal @db.Decimal(18,2)
+  createdById Int
+  createdBy   User @relation("PurchaseReturnCreatedBy", fields: [createdById], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  createdAt   DateTime @default(now()) @db.DateTime2
+  items       PurchaseReturnItem[]
+
+  @@unique([branchId, returnNo])
+  @@index([purchaseId])
+  @@map("purchase_returns")
+}
+
+model PurchaseReturnItem {
+  id               BigInt @id @default(autoincrement())
+  purchaseReturnId BigInt
+  purchaseReturn   PurchaseReturn @relation(fields: [purchaseReturnId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  purchaseItemId   BigInt
+  purchaseItem     PurchaseItem @relation(fields: [purchaseItemId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  batchId          Int
+  batch            ProductBatch @relation(fields: [batchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  qty              Int
+  taxableAmount    Decimal @db.Decimal(18,2)
+  taxAmount        Decimal @db.Decimal(18,2)
+  lineTotal        Decimal @db.Decimal(18,2)
+
+  @@index([purchaseReturnId])
+  @@index([purchaseItemId])
+  @@map("purchase_return_items")
+}
+
+model DocumentSequence {
+  id           Int      @id @default(autoincrement())
+  branchId     Int
+  branch       Branch   @relation(fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  documentType String   @db.NVarChar(20)
+  financialYear String  @db.NVarChar(9)
+  nextNumber   Int      @default(1)
+  updatedAt    DateTime @updatedAt @db.DateTime2
+
+  @@unique([branchId, documentType, financialYear])
+  @@index([branchId, financialYear])
+  @@map("document_sequences")
+}
