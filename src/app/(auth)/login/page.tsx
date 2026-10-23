@@ -1,14 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 
-export default function LoginPage() {
+function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get("callbackUrl") || "/dashboard";
@@ -51,17 +56,29 @@ export default function LoginPage() {
           <h1 className="font-serif text-2xl font-semibold tracking-tight">
             {process.env.NEXT_PUBLIC_APP_NAME || "IMS"}
           </h1>
-          <p className="mt-1 text-sm text-muted-foreground">Sign in to your shop dashboard</p>
+
+          <p className="mt-1 text-sm text-muted-foreground">
+            Sign in to your shop dashboard
+          </p>
         </div>
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base text-foreground">Sign in</CardTitle>
+            <CardTitle className="text-base text-foreground">
+              Sign in
+            </CardTitle>
           </CardHeader>
+
           <CardContent>
-            <form onSubmit={handleSubmit} method="post" className="space-y-4" noValidate>
+            <form
+              onSubmit={handleSubmit}
+              method="post"
+              className="space-y-4"
+              noValidate
+            >
               <div className="space-y-1.5">
                 <Label htmlFor="username">Username</Label>
+
                 <Input
                   id="username"
                   name="username"
@@ -72,8 +89,10 @@ export default function LoginPage() {
                   onChange={(e) => setUsername(e.target.value)}
                 />
               </div>
+
               <div className="space-y-1.5">
                 <Label htmlFor="password">Password</Label>
+
                 <Input
                   id="password"
                   name="password"
@@ -91,7 +110,11 @@ export default function LoginPage() {
                 </p>
               )}
 
-              <Button type="submit" className="w-full" disabled={isSubmitting}>
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={isSubmitting}
+              >
                 {isSubmitting ? "Signing in…" : "Sign in"}
               </Button>
             </form>
@@ -99,5 +122,21 @@ export default function LoginPage() {
         </Card>
       </div>
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="flex min-h-screen items-center justify-center bg-background px-4">
+          <div className="text-sm text-muted-foreground">
+            Loading sign in…
+          </div>
+        </main>
+      }
+    >
+      <LoginContent />
+    </Suspense>
   );
 }
